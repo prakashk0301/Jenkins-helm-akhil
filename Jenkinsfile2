@@ -1,0 +1,51 @@
+#!/usr/bin/env groovy
+
+// Prefix values used elsewhere in the script
+def genericPrefix = env.JOB_NAME.toLowerCase().replaceAll(' ', '-')
+def kubePrefix = genericPrefix
+if (kubePrefix.length() > 26) {
+  kubePrefix = genericPrefix.substring(0, 26)
+}
+
+// Label used when launching the pod in Kubernetes to run the containers
+def label = "${kubePrefix}-${UUID.randomUUID().toString()}"
+def datestamp = new Date().format('yyyyMMddHHmmss')
+
+def targetCloud = 'preprod-ohio-application'
+def environmentName = 'dev'
+def podName = 'kube-bench'
+def namespace = "${podName}-${environmentName}"
+def kubeContext = 'preprod-ohio-app'
+
+podTemplate(
+    label: kube,
+    cloud: targetCloud,
+    serviceAccount: 'jenkins',
+    namespace: 'devops',
+    containers: [
+        containerTemplate(name: 'busybox',
+            image: "busybox",
+            alwaysPullImage: true,
+            ttyEnabled: true,
+            command: 'cat',
+        )
+    ]
+){
+
+    node(label) {
+            stage('Execute kubectl command') {
+                container('busybox') {
+                        stage('Environment Setup') {
+                            sh '''#!/bin/sh
+                             kubectl apply -f job-eks.yaml
+                             sleep 5
+                             kubebenchvar=$(kubectl get pods | awk '{print $1}' | grep kube-bench)
+                             kubectl logs $kubebenchvar
+                             sleep 5
+                             kubectl delete -f job-eks.yaml
+                               '''
+                    } 
+                }
+            }
+        }
+    }
